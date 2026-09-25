@@ -56,6 +56,9 @@ class Settings:
     iou_threshold: float = _get_float("IOU_THRESHOLD", 0.45)
     infer_imgsz: int = int(os.getenv("INFER_IMGSZ", "640"))
     enhance_contrast: bool = os.getenv("ENHANCE_CONTRAST", "true").lower() == "true"
+    # Free hosts (Render 512 MB) cannot hold the YOLOv8x X-ray model in RAM.
+    # When true, skip caries.pt and serve photo weights only.
+    light_memory: bool = os.getenv("LIGHT_MEMORY", "false").lower() == "true"
 
     # Multi-class models: class-name substrings that count as caries findings.
     # NOTE: "lesion" is intentionally excluded — the pretrained X-ray model has a

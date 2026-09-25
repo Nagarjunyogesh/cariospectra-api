@@ -159,6 +159,9 @@ def discover_models() -> List[dict]:
     """List selectable models (metadata only — does not load them)."""
     infos: List[dict] = []
     for pt in sorted(MODELS_DIR.glob("*.pt")):
+        if settings.light_memory and pt.stem == "caries":
+            logger.info("LIGHT_MEMORY: skipping heavy X-ray weights %s", pt.name)
+            continue
         infos.append(
             {"name": pt.stem, "filename": pt.name, "type": "caries", "ref": str(pt)}
         )
@@ -198,10 +201,36 @@ def set_default_model(name: str) -> str:
     return name
 
 
+def cached_detector(name: Optional[str] = None) -> Optional[CariesDetector]:
+    """Return a loaded detector if it is already in memory; never loads."""
+    if name is None:
+        name = default_model_name()
+    return _cache.get(name)
+
+
+def _unload_others(keep: str) -> None:
+    """Drop every cached model except `keep` so small hosts stay under RAM limits."""
+    import gc
+
+    for key in [k for k in _cache if k != keep]:
+        logger.info("Unloading model '%s' to free memory", key)
+        det = _cache.pop(key)
+        det.model = None
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
 def get_detector(name: Optional[str] = None) -> CariesDetector:
     """Return a (cached) detector for `name`, or the default model.
 
     Raises KeyError if the requested model does not exist.
+    Only one model is kept in memory at a time (needed on 512 MB hosts).
     """
     infos = {i["name"]: i for i in discover_models()}
     if name is None:
@@ -209,6 +238,7 @@ def get_detector(name: Optional[str] = None) -> CariesDetector:
     if name not in infos:
         raise KeyError(name)
     if name not in _cache:
+        _unload_others(name)
         info = infos[name]
         _cache[name] = CariesDetector(info["ref"], info["name"], info["type"])
     return _cache[name]

@@ -13,6 +13,12 @@ services:
         value: caries,carie,cavity,decay
       - key: ENHANCE_CONTRAST
         value: "true"
+      - key: LIGHT_MEMORY
+        value: "true"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
       - key: LLM_BASE_URL
         value: https://api.groq.com/openai/v1
       - key: LLM_MODEL

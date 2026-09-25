@@ -23,6 +23,7 @@ from .chat import chat_completion
 from .config import settings
 from .detector import (
     CariesDetector,
+    cached_detector,
     default_model_name,
     discover_models,
     get_detector,
@@ -49,10 +50,12 @@ MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Warm the model at startup so the first request isn't slow.
-    logger.info("Loading detection model...")
-    get_detector()
-    logger.info("Model ready.")
+    # Do not preload YOLO here. The X-ray weights alone can exceed free-tier RAM
+    # and kill the process before the first request.
+    logger.info(
+        "API ready (models load on first /detect). LIGHT_MEMORY=%s",
+        settings.light_memory,
+    )
     yield
 
 
@@ -85,13 +88,16 @@ def root():
 
 @app.get("/health", response_model=HealthResponse)
 def health():
-    detector = get_detector()
+    active = default_model_name()
+    detector = cached_detector(active)
+    infos = {i["name"]: i for i in discover_models()}
+    info = infos.get(active) or next(iter(infos.values()))
     return HealthResponse(
         status="ok",
-        active_model=detector.name,
-        model_type=detector.model_type,
-        model_name=detector.model_name,
-        classes=detector.class_names,
+        active_model=active,
+        model_type=detector.model_type if detector else info["type"],
+        model_name=detector.model_name if detector else info["filename"],
+        classes=detector.class_names if detector else [],
     )
 
 
@@ -164,7 +170,14 @@ async def detect(image: UploadFile = File(...), model: Optional[str] = Form(None
 
     # X-rays over-flag on the pretrained model → require higher confidence.
     conf = settings.xray_conf_threshold if image_type == "xray" else None
-    detections, width, height, inference_ms = detector.detect(image_bgr, conf=conf)
+    try:
+        detections, width, height, inference_ms = detector.detect(image_bgr, conf=conf)
+    except Exception:
+        logger.exception("Detection crashed (often out of memory on a small host)")
+        raise HTTPException(
+            status_code=503,
+            detail="Analysis failed on the server (out of memory). Retry a smaller photo, or upgrade the host for the X-ray model.",
+        ) from None
     verdict = "Caries Detected" if detections else "No Caries"
 
     return DetectResponse(
