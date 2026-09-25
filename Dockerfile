@@ -35,6 +35,7 @@ RUN python scripts/get_model.py --source url \
 # LIGHT_MEMORY skips the 144 MB YOLOv8x X-ray weights (too large for 512 MB).
 ENV PORT=7860 \
     LIGHT_MEMORY=true \
+    INFER_IMGSZ=320 \
     OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1
 EXPOSE 7860

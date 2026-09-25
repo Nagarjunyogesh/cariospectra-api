@@ -50,12 +50,14 @@ MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Do not preload YOLO here. The X-ray weights alone can exceed free-tier RAM
-    # and kill the process before the first request.
-    logger.info(
-        "API ready (models load on first /detect). LIGHT_MEMORY=%s",
-        settings.light_memory,
-    )
+    # Preload only the default (photo) model. Skip this when LIGHT_MEMORY is off
+    # so the 144 MB X-ray weights are not forced into RAM at boot.
+    if settings.light_memory:
+        logger.info("LIGHT_MEMORY: preloading %s", default_model_name())
+        get_detector()
+        logger.info("Photo model ready.")
+    else:
+        logger.info("API ready (models load on first /detect).")
     yield
 
 
