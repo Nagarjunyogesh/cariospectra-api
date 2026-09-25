@@ -1,0 +1,21 @@
+# Render Blueprint — https://render.com
+# After this repo is on GitHub: New → Blueprint → select the repo.
+services:
+  - type: web
+    name: cariospectra-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: XRAY_CONF_THRESHOLD
+        value: "0.3"
+      - key: CARIES_CLASSES
+        value: caries,carie,cavity,decay
+      - key: ENHANCE_CONTRAST
+        value: "true"
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: openai/gpt-oss-120b
+      - key: LLM_API_KEY
+        sync: false

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+models/*.pt
+models/*.onnx
+models/*.onnx.data
+!models/.gitkeep
+yolov8n.pt
+*.jpg
+*.jpeg
+*.png
+!tests/**/*.jpg

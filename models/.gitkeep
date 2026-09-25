@@ -1,0 +1,2 @@
+# Place your YOLO caries weights here as `caries.pt`
+# (or point MODEL_PATH at wherever they live).
