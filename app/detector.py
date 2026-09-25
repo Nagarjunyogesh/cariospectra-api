@@ -99,6 +99,17 @@ class CariesDetector:
         """
         height, width = image_bgr.shape[:2]
         processed = self._preprocess(image_bgr)
+        # Downscale before YOLO so free-tier RAM stays under 512 MB.
+        max_side = max(processed.shape[:2])
+        if max_side > settings.infer_imgsz:
+            scale = settings.infer_imgsz / max_side
+            processed = cv2.resize(
+                processed,
+                (max(1, int(width * scale)), max(1, int(height * scale))),
+                interpolation=cv2.INTER_AREA,
+            )
+        ph, pw = processed.shape[:2]
+        sx, sy = width / pw, height / ph
 
         start = time.perf_counter()
         results = self.model.predict(
@@ -120,6 +131,8 @@ class CariesDetector:
                 if cls_id not in self.caries_ids:
                     continue
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
+                x1, x2 = x1 * sx, x2 * sx
+                y1, y2 = y1 * sy, y2 * sy
                 conf = float(box.conf[0])
                 label = self.names.get(cls_id, str(cls_id))
                 detections.append(

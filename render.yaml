@@ -16,7 +16,7 @@ services:
       - key: LIGHT_MEMORY
         value: "true"
       - key: INFER_IMGSZ
-        value: "320"
+        value: "160"
       - key: OMP_NUM_THREADS
         value: "1"
       - key: MKL_NUM_THREADS
