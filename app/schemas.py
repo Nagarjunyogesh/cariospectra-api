@@ -85,7 +85,30 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     patient: Optional[dict] = None
     scans: Optional[List[dict]] = None
+    nearby: Optional[dict] = None
 
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+class NearbyPlace(BaseModel):
+    id: str
+    name: str
+    kind: str
+    lat: float
+    lng: float
+    distance_km: float
+    rating: Optional[float] = None
+    reviews: Optional[int] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    open_now: Optional[bool] = None
+    why: str
+    emergency: bool = False
+
+
+class NearbyCareResponse(BaseModel):
+    source: Literal["google", "openstreetmap"]
+    include_emergency: bool
+    places: List[NearbyPlace]

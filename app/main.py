@@ -7,6 +7,7 @@ Endpoints:
   POST /models/active    -> set server default model
   POST /detect           -> multipart image upload -> detections JSON
                            (pass model=auto to classify X-ray vs photo)
+  GET  /nearby-care      -> dentists near lat/lng, filtered to the screening need
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from contextlib import asynccontextmanager
 
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
@@ -30,6 +31,7 @@ from .detector import (
     set_default_model,
 )
 from .image_type import classify_image_kind, is_dental_image, preferred_model_for_kind
+from .nearby import find_nearby_care
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -37,6 +39,7 @@ from .schemas import (
     HealthResponse,
     ModelInfo,
     ModelsResponse,
+    NearbyCareResponse,
     SetModelRequest,
 )
 
@@ -218,6 +221,24 @@ async def detect(image: UploadFile = File(...), model: Optional[str] = Form(None
     )
 
 
+@app.get("/nearby-care", response_model=NearbyCareResponse)
+async def nearby_care(
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    level: str = Query("moderate"),
+    limit: int = Query(8, ge=1, le=12),
+):
+    """Dentists / dental clinics near the user, filtered to the screening need."""
+    allowed = {"routine", "low", "moderate", "high"}
+    if level not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid care level.")
+    try:
+        data = await find_nearby_care(lat, lng, level=level, limit=limit)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return NearbyCareResponse(**data)
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     """Answer a patient question using their profile + screening history as context."""
@@ -225,7 +246,7 @@ async def chat(req: ChatRequest):
         raise HTTPException(status_code=400, detail="No messages provided.")
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
     try:
-        reply = await chat_completion(messages, req.patient, req.scans)
+        reply = await chat_completion(messages, req.patient, req.scans, req.nearby)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return ChatResponse(reply=reply)

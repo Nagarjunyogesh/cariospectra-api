@@ -29,9 +29,15 @@ STYLE — be warm, genuinely helpful, and well-formatted:
 
 RULES:
 - General information only — you are NOT a dentist and must not diagnose.
-- Use the patient's profile and screening history below; if data is missing, say so briefly.
+- Use the patient's profile, screening history, and nearby-care list below; if data is missing, say so briefly.
 - Recommend seeing a dentist for diagnosis/treatment. For pain, swelling, fever, or heavy \
 bleeding, advise prompt care.
+- When the user asks what to do next, whether to see a dentist, about clinics/hospitals, \
+or about their screening result: suggest 2-3 places from NEARBY CARE only. Lead with the \
+best match. For each, give the name, distance, and why it fits this issue. Mention a \
+rating only if one is listed. Do not invent clinics, hospitals, or star ratings. If the \
+list is empty, say nearby clinics could not be looked up and they can use the Nearby \
+care section on the result screen.
 - Dental / oral-health topics only. Warm but concise. Never prescribe medication.
 
 PATIENT CONTEXT:
@@ -51,7 +57,48 @@ def _age_from_dob(dob: Optional[str]) -> Optional[int]:
         return None
 
 
-def build_context(patient: Optional[dict], scans: Optional[List[dict]]) -> str:
+def _nearby_lines(nearby: Optional[dict]) -> List[str]:
+    if not nearby:
+        return []
+    places = nearby.get("places") or []
+    lines = [
+        "",
+        "NEARBY CARE (already filtered to this patient's issue; do not invent others):",
+    ]
+    if nearby.get("include_emergency"):
+        lines.append("  Urgency: prefer places that can treat pain / same-day dental care.")
+    if not places:
+        lines.append("  (No matching clinics were found near the user.)")
+        return lines
+    for i, p in enumerate(places[:6], start=1):
+        bits = [p.get("name") or "Unknown", p.get("kind") or "dentist"]
+        if p.get("distance_km") is not None:
+            bits.append(f"{p['distance_km']} km away")
+        if p.get("rating") is not None:
+            reviews = f" / {p['reviews']} reviews" if p.get("reviews") else ""
+            bits.append(f"rated {p['rating']}{reviews}")
+        else:
+            bits.append("no public rating")
+        if p.get("why"):
+            bits.append(p["why"])
+        if p.get("address"):
+            bits.append(p["address"])
+        if p.get("phone"):
+            bits.append(p["phone"])
+        if p.get("open_now") is True:
+            bits.append("open now")
+        if p.get("emergency"):
+            bits.append("emergency-capable")
+        label = "Best match" if i == 1 else f"Option {i}"
+        lines.append(f"  - {label}: " + " · ".join(str(b) for b in bits if b))
+    return lines
+
+
+def build_context(
+    patient: Optional[dict],
+    scans: Optional[List[dict]],
+    nearby: Optional[dict] = None,
+) -> str:
     lines: List[str] = []
     if patient:
         age = _age_from_dob(patient.get("dob"))
@@ -78,6 +125,8 @@ def build_context(patient: Optional[dict], scans: Optional[List[dict]]) -> str:
             model = s.get("model") or ""
             lines.append(f"  - {when}: {verdict} ({count} region(s)) [{model}]")
 
+    lines += _nearby_lines(nearby)
+
     return "\n".join(lines) if lines else "No patient data is available yet."
 
 
@@ -85,6 +134,7 @@ async def chat_completion(
     messages: List[dict],
     patient: Optional[dict],
     scans: Optional[List[dict]],
+    nearby: Optional[dict] = None,
 ) -> str:
     """Call the configured LLM and return the assistant's reply text."""
     if not settings.llm_api_key and "localhost" not in settings.llm_base_url:
@@ -93,7 +143,7 @@ async def chat_completion(
             "the backend environment, or point LLM_BASE_URL at a local Ollama."
         )
 
-    system = SYSTEM_PROMPT.format(context=build_context(patient, scans))
+    system = SYSTEM_PROMPT.format(context=build_context(patient, scans, nearby))
     payload = {
         "model": settings.llm_model,
         "messages": [{"role": "system", "content": system}, *messages],

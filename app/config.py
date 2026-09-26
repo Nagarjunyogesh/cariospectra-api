@@ -91,5 +91,10 @@ class Settings:
     def llm_model(self) -> str:
         return _resolve_llm_model(os.getenv("LLM_MODEL", "openai/gpt-oss-120b"))
 
+    # Optional. When set, nearby-care prefers Google Places (ratings + review counts).
+    @property
+    def google_places_api_key(self) -> str:
+        return (os.getenv("GOOGLE_PLACES_API_KEY") or "").strip()
+
 
 settings = Settings()
