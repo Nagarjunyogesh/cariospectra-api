@@ -29,7 +29,7 @@ from .detector import (
     get_detector,
     set_default_model,
 )
-from .image_type import classify_image_kind, preferred_model_for_kind
+from .image_type import classify_image_kind, is_dental_image, preferred_model_for_kind
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -155,15 +155,35 @@ async def detect(image: UploadFile = File(...), model: Optional[str] = Form(None
     image_type = None
     auto_selected = False
     resolved = model
+    kind = classify_image_kind(image_bgr)
 
     # Live scan (and any client) can pass model=auto: classify X-ray vs photo
     # and pick caries / caries_photo without the user choosing.
     if model == AUTO_MODEL:
         available = {i["name"] for i in discover_models()}
-        image_type = classify_image_kind(image_bgr)
-        resolved = preferred_model_for_kind(image_type, available)
+        image_type = kind
+        resolved = preferred_model_for_kind(kind, available)
         auto_selected = True
         logger.info("Auto model: image_type=%s → %s", image_type, resolved)
+
+    if not is_dental_image(image_bgr, kind):
+        logger.info("Rejected non-dental image (classified as %s)", kind)
+        infos = {i["name"]: i for i in discover_models()}
+        info = infos.get(resolved or default_model_name()) or next(iter(infos.values()))
+        return DetectResponse(
+            model=info["name"],
+            model_type=info["type"],
+            model_name=info["filename"],
+            image_width=int(image_bgr.shape[1]),
+            image_height=int(image_bgr.shape[0]),
+            verdict="Not a dental image",
+            count=0,
+            detections=[],
+            inference_ms=0.0,
+            disclaimer=settings.disclaimer,
+            image_type="other",
+            auto_selected=auto_selected,
+        )
 
     try:
         detector = get_detector(resolved)
@@ -171,7 +191,7 @@ async def detect(image: UploadFile = File(...), model: Optional[str] = Form(None
         raise HTTPException(status_code=404, detail=f"Unknown model '{model}'.")
 
     # X-rays over-flag on the pretrained model → require higher confidence.
-    conf = settings.xray_conf_threshold if image_type == "xray" else None
+    conf = settings.xray_conf_threshold if kind == "xray" else None
     try:
         detections, width, height, inference_ms = detector.detect(image_bgr, conf=conf)
     except Exception:

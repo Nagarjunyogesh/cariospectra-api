@@ -5,6 +5,7 @@ the assistant answers from the user's own data, and calls the configured model.
 """
 from __future__ import annotations
 
+import re
 from typing import List, Optional
 
 import httpx
@@ -19,6 +20,8 @@ STYLE — be warm, genuinely helpful, and well-formatted:
 - Use bullet points (each starting with "- ") to lay out the key points clearly. For a longer
   answer, group related points under short **bold headings** on their own line.
 - Put the most important words or phrases in **bold**.
+- Never use markdown headings (#, ##, ###), horizontal rules (--- or --), numbered-hash
+  markers, or HTML. The phone app cannot render those — they show up as raw junk.
 - Length should fit the question: keep simple answers brief, but go into genuine detail (more
   bullets, a short extra paragraph) when it truly adds value — depth is welcome. Never pad,
   waffle, or repeat yourself.
@@ -107,4 +110,23 @@ async def chat_completion(
         if resp.status_code >= 400:
             raise RuntimeError(f"LLM request failed ({resp.status_code}): {resp.text[:300]}")
         data = resp.json()
-    return data["choices"][0]["message"]["content"].strip()
+    return _sanitize_reply(data["choices"][0]["message"]["content"])
+
+
+_HEADING_MARK = re.compile(r"^#{1,6}\s+")
+_RULE_LINE = re.compile(r"^[-*_=]{2,}$")
+
+
+def _sanitize_reply(text: str) -> str:
+    """Strip markdown the phone chat bubble cannot render (###, ---, leftover #)."""
+    cleaned: List[str] = []
+    for raw in (text or "").splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if _RULE_LINE.match(stripped):
+            if cleaned and cleaned[-1] != "":
+                cleaned.append("")
+            continue
+        line = _HEADING_MARK.sub("", stripped)
+        cleaned.append(line)
+    return "\n".join(cleaned).strip()

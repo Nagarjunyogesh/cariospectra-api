@@ -42,13 +42,13 @@ class DetectResponse(BaseModel):
     model_name: str
     image_width: int
     image_height: int
-    verdict: Literal["Caries Detected", "No Caries"]
+    verdict: Literal["Caries Detected", "No Caries", "Not a dental image"]
     count: int
     detections: List[Detection]
     inference_ms: float
     disclaimer: str
     # Present when the client asked for model="auto" (live-scan routing).
-    image_type: Literal["xray", "photo"] | None = None
+    image_type: Literal["xray", "photo", "other"] | None = None
     auto_selected: bool = False
 
 
